@@ -1,2 +1,3 @@
-# portfoliodemo
-Free-to-use portfolio, you can customize it for your needs.
+## To-do:
+- Fix scaling and shi
+- Better optimization
