@@ -130,12 +130,18 @@
             height: 40px;
             border-radius: 2px;
             cursor: pointer;
-            font-size: 1.2rem;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: background 0.3s;
             flex-shrink: 0;
+            padding: 0;
+        }
+
+        .play-btn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
         }
 
         .play-btn:hover {
@@ -151,25 +157,27 @@
 
         .timeline {
             flex: 1;
-            height: 6px;
+            height: 8px;
             background: #333;
-            border-radius: 0;
+            border-radius: 6px;
             cursor: pointer;
             position: relative;
+            overflow: hidden;
         }
 
         .timeline-progress {
             height: 100%;
             background: #fff;
-            border-radius: 0;
+            border-radius: 6px;
             width: 0%;
-            transition: width 0.1s linear;
+            transition: width 0.12s linear;
         }
 
         .time-display {
             font-size: 0.9rem;
             color: #aaa;
             min-width: 45px;
+            text-align: center;
         }
 
         .pentagram-container {
@@ -281,7 +289,7 @@
     </style>
 </head>
 <body>
-    <video id="videoBackground" loop muted>
+    <video id="videoBackground" loop muted playsinline webkit-playsinline>
         <source src="video.mp4" type="video/mp4">
     </video>
 
@@ -319,7 +327,10 @@
                     <source src="music.mp3" type="audio/mpeg">
                 </audio>
                 <div class="music-controls">
-                    <button class="play-btn" id="playBtn">▶</button>
+                    <button class="play-btn" id="playBtn">
+                        <svg id="playIcon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z" fill="#000"/></svg>
+                        <svg id="pauseIcon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none;"><path d="M6 19h4V5H6zm8-14v14h4V5h-4z" fill="#000"/></svg>
+                    </button>
                     <div class="timeline-container">
                         <span class="time-display" id="currentTime">0:00</span>
                         <div class="timeline" id="timeline">
@@ -338,6 +349,8 @@
         const videoBackground = document.getElementById('videoBackground');
         const audioPlayer = document.getElementById('audioPlayer');
         const playBtn = document.getElementById('playBtn');
+        const playIcon = document.getElementById('playIcon');
+        const pauseIcon = document.getElementById('pauseIcon');
         const timeline = document.getElementById('timeline');
         const timelineProgress = document.getElementById('timelineProgress');
         const currentTimeEl = document.getElementById('currentTime');
@@ -346,11 +359,19 @@
 
         let isPlaying = false;
         let siteStarted = false;
+        let rafId = null;
 
         clickScreen.addEventListener('click', () => {
             clickScreen.classList.add('hidden');
             mainContent.classList.add('visible');
             videoBackground.play();
+            audioPlayer.play().then(() => {
+                isPlaying = true;
+                playIcon.style.display = 'none';
+                pauseIcon.style.display = 'block';
+                startProgressLoop();
+            }).catch(() => {
+            });
             siteStarted = true;
             startPentagramRain();
         });
@@ -358,29 +379,39 @@
         playBtn.addEventListener('click', () => {
             if (isPlaying) {
                 audioPlayer.pause();
-                playBtn.textContent = '▶';
+                playIcon.style.display = 'block';
+                pauseIcon.style.display = 'none';
+                stopProgressLoop();
             } else {
-                audioPlayer.play();
-                playBtn.textContent = '⏸';
+                audioPlayer.play().then(() => {
+                    playIcon.style.display = 'none';
+                    pauseIcon.style.display = 'block';
+                    startProgressLoop();
+                }).catch(() => {
+                });
             }
             isPlaying = !isPlaying;
-        });
-
-        audioPlayer.addEventListener('timeupdate', () => {
-            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            timelineProgress.style.width = progress + '%';
-            currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
         });
 
         audioPlayer.addEventListener('loadedmetadata', () => {
             durationEl.textContent = formatTime(audioPlayer.duration);
         });
 
+        audioPlayer.addEventListener('ended', () => {
+            isPlaying = false;
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+            stopProgressLoop();
+        });
+
         timeline.addEventListener('click', (e) => {
             const rect = timeline.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
-            const percentage = clickX / rect.width;
-            audioPlayer.currentTime = percentage * audioPlayer.duration;
+            const percentage = Math.min(Math.max(clickX / rect.width, 0), 1);
+            if (!isNaN(audioPlayer.duration)) {
+                audioPlayer.currentTime = percentage * audioPlayer.duration;
+                updateProgressImmediate();
+            }
         });
 
         function formatTime(seconds) {
@@ -388,6 +419,33 @@
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateProgressImmediate() {
+            if (isNaN(audioPlayer.duration) || audioPlayer.duration === 0) {
+                timelineProgress.style.width = '0%';
+                currentTimeEl.textContent = '0:00';
+                return;
+            }
+            const pct = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+            timelineProgress.style.width = pct + '%';
+            currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+        }
+
+        function startProgressLoop() {
+            stopProgressLoop();
+            function loop() {
+                updateProgressImmediate();
+                rafId = requestAnimationFrame(loop);
+            }
+            rafId = requestAnimationFrame(loop);
+        }
+
+        function stopProgressLoop() {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
         }
 
         function createPentagram() {
@@ -398,7 +456,6 @@
             pentagram.style.animationDuration = (Math.random() * 3 + 4) + 's';
             pentagram.style.opacity = Math.random() * 0.5 + 0.3;
             pentagramContainer.appendChild(pentagram);
-
             setTimeout(() => {
                 pentagram.remove();
             }, 7000);
